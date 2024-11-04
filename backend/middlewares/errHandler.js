@@ -6,7 +6,7 @@ const notFound = (req, res, next) => {
 
 const errHandler = (err, req, res, next) => {
   const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
-  console.error("Error:", err); // Log the full error
+  console.error("Error:", err); 
   return res.status(statusCode).json({
     success: false,
     mes: err.message || "An unexpected error occurred.",

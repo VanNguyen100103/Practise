@@ -54,37 +54,101 @@ const finalRegister = asyncHandler(async (req, res)=>{
     })
 })
 
-const login = asyncHandler(async (req, res)=> {
-    const { email, password } = req.body
-    if(!email || !password) throw new Error("Missing inputs.")
-    const user = await User.findOne({email}).select("-updatedAt -createdAt -isBlocked -lastLoginAt -__v -_id")
+const login = asyncHandler(async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) throw new Error("Missing inputs.");
+
+    const user = await User.findOne({ email }).select("+password"); // Lấy mật khẩu đã mã hóa để so sánh
     if (!user) {
-        return res.status(400).json({mes: "User didn't register!"})
+        return res.status(400).json({ mes: "User didn't register!" });
     }
-    if(!user.comparePassword(password)){
-        return res.status(400).json({mes: "User entered wrong password!"})
-    }
-    
-    if(user && user.comparePassword(password)){
-        const accessToken = generateAccessToken(user._id, user.role)
-        const newRefreshToken = generateRefreshToken(user._id)
-        res.cookie("refreshToken", newRefreshToken, {
-            httpOnly: true,
-            maxAge: 12 * 30  * 24 * 60 * 60 * 1000,
-            sameSite: 'lax'
-        })
-        await User.updateOne({lastLoginAt: Date.now()})
-        const oneYearAgo = new Date()
-        oneYearAgo.setFullYear(oneYearAgo.getFullYear()-1)
-        if(oneYearAgo < user?.lastLoginAt?.getFullYear()){
-            user.isBlocked = true
-            await user.save()
-        }
-        return res.status(200).json({success: true, user, accessToken})
-    }
-    
 
-})
+    // So sánh mật khẩu
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+        return res.status(400).json({ mes: "User entered wrong password!" });
+    }
 
-module.exports = {register, finalRegister, login}
+    // Đăng nhập thành công
+    const accessToken = generateAccessToken(user._id, user.role);
+    const newRefreshToken = generateRefreshToken(user._id);
+
+    res.cookie("refreshToken", newRefreshToken, {
+        httpOnly: true,
+        maxAge: 12 * 30 * 24 * 60 * 60 * 1000,
+        sameSite: 'lax'
+    });
+
+    await User.updateOne({ _id: user._id }, { lastLoginAt: Date.now() }); // Cập nhật thời gian đăng nhập cuối
+
+    return res.status(200).json({
+        success: true,
+        user: {
+            firstname: user.firstname,
+            lastname: user.lastname,
+            mobile: user.mobile,
+            address: user.address,
+            email: user.email,
+        },
+        accessToken
+    });
+});
+
+
+const forgotPassword = asyncHandler(async (req, res) => {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) throw new Error("User didn't register");
+
+    // Tạo token đặt lại mật khẩu
+    const resetToken = user.createPasswordChangedToken();
+
+    // Lưu thay đổi vào cơ sở dữ liệu
+    await user.save(); 
+
+    // Gửi email với link reset password
+    const html = `Thời gian tồn tại của mã trong 24 giờ kể từ lúc nhận được.<br/>Xin quý khách click link bên dưới để đổi mật khẩu.<br/><a href="${process.env.CLIENT_URL}/forgot-password/${resetToken}">Confirm</a>`;
+    await sendEmail({ email, html, subject: "Forgot Password" });
+
+    return res.status(200).json({ success: true, mes: "Please check your email!" });
+});
+
+
+const resetPassword = asyncHandler(async (req, res) => {
+    const { token, password } = req.body;
+    if (!token || !password) throw new Error("Missing inputs.");
+
+    // Mã hóa token nhận được từ yêu cầu để so sánh
+    const passwordResetToken = crypto.createHash("sha256").update(token).digest("hex");
+
+    // Tìm người dùng với token khớp và token chưa hết hạn
+    const user = await User.findOne({
+        passwordResetToken,
+        passwordResetExpires: { $gt: Date.now() } // kiểm tra hạn của token
+    });
+
+    if (!user) {
+        return res.status(400).json({
+            success: false,
+            mes: "Invalid or expired token"
+        });
+    }
+
+    // Đặt lại mật khẩu và xóa các thuộc tính liên quan đến token
+    user.password = password;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    user.passwordChangedAt = Date.now();
+
+    await user.save();
+
+    return res.status(200).json({
+        success: true,
+        mes: "Password changed successfully!"
+    });
+});
+
+
+
+module.exports = {register, finalRegister, login, forgotPassword, resetPassword}
   
