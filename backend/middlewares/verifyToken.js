@@ -17,4 +17,14 @@ const verityToken = asyncHandler((req, res, next) => {
     }
 })
 
-module.exports = {verityToken}
+const isAdmin = asyncHandler((req, res, next) => {
+    const {role} = req.user
+    if(role !== "admin") {
+        return res.status(401).json({success: false, mes: "REQUIRE ROLE IS ADMIN"}) 
+    }
+    next()
+})
+
+
+
+module.exports = {verityToken, isAdmin}

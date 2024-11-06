@@ -4,7 +4,9 @@ const crypto = require('crypto');
 const {generateAccessToken, generateRefreshToken} = require('../middlewares/generateToken');
 const sendEmail = require('../utils/sendEmail');
 const makeToken = require('uniquid');
-const moment = require('moment-timezone');
+const jwt = require('jsonwebtoken');
+const { access } = require("fs");
+
 
 const register = asyncHandler(async (req, res) => {
     const {firstname, lastname, mobile, address, email, password} = req.body
@@ -50,64 +52,44 @@ const finalRegister = asyncHandler(async (req, res)=>{
     })
 })
 
-const login = asyncHandler(async (req, res) => {
-    const { email, password } = req.body;
-    if (!email || !password) throw new Error("Missing inputs!");
-
-    const user = await User.findOne({ email }).select("+password");
-    if (!user) {
-        return res.status(400).json({
-            success: false,
-            mes: "User hasn't registered."
-        });
+const login = asyncHandler(async (req, res)=>{
+    const {email, password} = req.body
+    if(!email || !password) throw new Error("Missing inputs.")
+    const user = await User.findOne({email}).select("+password")
+    if(!user) {
+        return res.status(400).json({success: false, mes: "User chưa đăng ký."})
     }
-
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-        return res.status(400).json({
-            success: false,
-            mes: "User entered wrong password."
-        });
+    const isMatch = await user.comparePassword(password)
+    if(!isMatch){
+        return res.status(400).json({success: false, mes: "Wrong password."})
     }
     const lastLoginAt = new Date(user.lastLoginAt)
     const oneYearAgo = new Date()
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
-    // Kiểm tra nếu người dùng đã đăng nhập gần đây hơn một năm so với ngày hiện tại
-    if (lastLoginAt < oneYearAgo) {
-        user.isBlocked = true;
-        await user.save();
-        return res.status(403).json({ success: false, mes: "User is blocked!", isBlocked: user.isBlocked });
+    if(lastLoginAt < oneYearAgo){
+        user.isBlocked = true
+        await user.save()
+        return res.status(403).json({success: false, mes: "Account is blocked."})
     }
- 
-    const accessToken = generateAccessToken(user._id, user.role);
-    const newRefreshToken = generateRefreshToken(user._id);
-    res.cookie("refreshToken", newRefreshToken, {
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000,
-        sameSite: "lax"
-    });
-
-    await User.findByIdAndUpdate(
-        user._id,
-       {$set: { lastLoginAt: new Date(), isBlocked: false}},
-        { new: true }
-    );
-
+    const accesssToken = generateAccessToken(user._id, user.role)
+    const newRefreshToken = generateRefreshToken(user._id)
+    res.cookie("refreshToken", newRefreshToken, {httpOnly: true, maxAge: 365 * 24 * 60 * 60 * 1000, sameSite: "lax"})
+    await User.findByIdAndUpdate(user._id, {$set: {lastLoginAt: new Date(), isBlocked: false, refreshToken: newRefreshToken}}, {new: true})
     return res.status(200).json({
-        success: true,
+        success:true, 
         user: {
             firstname: user.firstname,
             lastname: user.lastname,
             mobile: user.mobile,
             address: user.address,
-            email: user.email,
             avatar: user.avatar,
+            email: user.email,
+            isBlocked: user.isBlocked,
+            lastLoginAt: user.lastLoginAt,
         },
-        accessToken
-    });
-});
-
-
+        accesssToken
+    })
+})
 
 
 const forgotPassword = asyncHandler(async (req, res) => {
@@ -151,4 +133,67 @@ const resetPassword = asyncHandler(async (req, res)=>{
     })
 })
 
-module.exports = {register, finalRegister, login, forgotPassword, resetPassword}
+const refreshAccessToken = asyncHandler(async (req, res)=>{
+    const cookie = req.cookies 
+    if(!cookie || !cookie.refreshToken) throw new Error("No refresh token in cookies.")
+    jwt.verify(cookie.refreshToken, process.env.JWT_SECRETKEY, async (err, decode) => {
+        if(err) throw new Error("Refreshtoken invalid!")
+        req.user = decode
+        const response = await User.findOne({_id: decode._id, refreshToken: cookie.refreshToken})
+        return res.status(200).json({
+            success: response ? true : false,
+            accessToken: response ? generateAccessToken(response._id, response.role) : 'Invalid refreshToken.'
+        })
+    }
+    )
+})
+
+const logout = asyncHandler(async (req, res)=>{
+    const cookie = req.cookies 
+    if(!cookie || !cookie.refreshToken) throw new Error("No refresh token in cookies.")
+    const user = await User.findOneAndUpdate({refreshToken: cookie.refreshToken}, {$set: {refreshToken: ""}}, {new: true})
+    res.clearCookie("refreshToken")
+    return res.status(200).json({
+        success: user ? true : false,
+        mes: user ? "Logout successfully!" : "Logout failed!"
+    })
+})
+
+
+const getUsers = asyncHandler(async (req, res)=>{
+    const queries = {...req.query}
+    const excludeFields = ["sort", "fields", "page", "limit"]
+    excludeFields.forEach(field => delete queries[field])
+    let queryString = JSON.stringify(queries)
+
+    queryString = queryString.replace(/\b(gte|gt|lt|lte)\b/g, (matchedEl) => `$${matchedEl}`);
+
+
+    const formatedQueries = JSON.parse(queryString)
+    if (queries.firstname || queries.lastname) {
+        formatedQueries.$or = [
+            queries.firstname && { firstname: { $regex: queries.firstname, $options: "i" } },
+            queries.lastname && { lastname: { $regex: queries.lastname, $options: "i" } }
+        ].filter(Boolean); 
+        delete formatedQueries.firstname;
+        delete formatedQueries.lastname;
+    } else {
+        delete formatedQueries.firstname;
+        delete formatedQueries.lastname;
+    }
+    
+    const page = +req.query.page || 1
+    const limit = +req.query.limit || process.env.LIMIT_PER_PAGE
+    const skip = (page - 1) * limit
+    
+    const response = await User.find(formatedQueries).skip(skip).limit(limit)
+    const counts = await User.countDocuments(formatedQueries)
+    return res.status(200).json({
+        counts,
+        success: response ? true : false,
+        users: response,
+      
+    })
+})  
+
+module.exports = {register, finalRegister, login, forgotPassword, resetPassword, refreshAccessToken, logout, getUsers}
