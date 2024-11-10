@@ -20,6 +20,16 @@ const avatarStorage = new CloudinaryStorage({
     }
 })
 
-const avatarUploader = multer({storage: avatarStorage})
+const productStorage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+        folder: "products",
+        allowedFormats: ["jpg", "png", "webp",]
+    }
+})
 
-module.exports = {avatarUploader}
+
+const avatarUploader = multer({storage: avatarStorage})
+const productUploader = multer({storage: productStorage})
+
+module.exports = {avatarUploader, productUploader}

@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const asyncHandler = require("express-async-handler");
 
-const verityToken = asyncHandler((req, res, next) => {
+const verifyToken = asyncHandler((req, res, next) => {
     if(req?.headers?.authorization?.startsWith("Bearer")) {
         const token = req.headers.authorization.split(" ")[1]
         jwt.verify(token, process.env.JWT_SECRETKEY, (err, decode) => {
@@ -27,4 +27,4 @@ const isAdmin = asyncHandler((req, res, next) => {
 
 
 
-module.exports = {verityToken, isAdmin}
+module.exports = {verifyToken, isAdmin}
