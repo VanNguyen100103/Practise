@@ -6,5 +6,7 @@ const {productUploader} = require('../configs/cloudinary');
 
 router.post("/create", [verifyToken, isAdmin], productUploader.array("images",10) ,ctrls.createProduct)
 router.get("/any", ctrls.getProducts)
+router.get("/one/:pid", ctrls.getOne)
+
 
 module.exports = router;

@@ -231,24 +231,52 @@ const getUsers = asyncHandler(async (req, res) => {
     (matchEl) => `$${matchEl}`
   );
   const formatedQueries = JSON.parse(queryString);
-  if (queries.firstname || queries.lastname) {
-    formatedQueries.$or = [
-      queries.firstname && {
-        firstname: { $regex: queries.firstname, $options: "i" },
-      },
-      queries.lastname && {
-        lastname: { $regex: queries.lastname, $options: "i" },
-      },
-    ].filter(Boolean);
+  if (queries.firstname && queries.lastname) {
+    // If both firstname and lastname are provided, use $and to match both conditions
+    formatedQueries.$and = [
+      { firstname: { $regex: queries.firstname, $options: "i" } },
+      { lastname: { $regex: queries.lastname, $options: "i" } }
+    ];
+  
+    // Remove individual fields to avoid duplicate filtering
+    delete formatedQueries.firstname;
+    delete formatedQueries.lastname;
+  } else if (queries.firstname || queries.lastname) {
+    // If only one of firstname or lastname is provided, use $or
+    formatedQueries.$or = [];
+  
+    if (queries.firstname) {
+      formatedQueries.$or.push({ firstname: { $regex: queries.firstname, $options: "i" } });
+    }
+  
+    if (queries.lastname) {
+      formatedQueries.$or.push({ lastname: { $regex: queries.lastname, $options: "i" } });
+    }
+  
+    // Remove $or if it's empty
+    if (formatedQueries.$or.length === 0) {
+      delete formatedQueries.$or;
+    }
+  
+    // Clean up original `firstname` and `lastname` fields
     delete formatedQueries.firstname;
     delete formatedQueries.lastname;
   } else {
-    
+    // Ensure no unnecessary fields remain if neither is present
     delete formatedQueries.firstname;
     delete formatedQueries.lastname;
   }
 
   let queryCommand =  User.find(formatedQueries)
+  if(req.query.sort){
+    const sortBy = req.query.sort.split(",").join(" ");
+    queryCommand = queryCommand.sort(sortBy)
+  }
+  if(req.query.fields){
+    const fields = req.query.fields.split(",").join(" ");
+    queryCommand = queryCommand.select(fields)
+
+  }
   const page = +req.query.page || 1;
   const limit = +req.query.limit || process.env.LIMIT_PER_PAGE;
   const skip = (page - 1) * limit;
@@ -323,10 +351,10 @@ const updateAddress = asyncHandler(async (req, res)=>{
   
 const updateCart = asyncHandler(async (req, res) => {
   const  _id  = req.user._id;
-  const { pid, price, quantity, color, size, rentalStartDate, rentalEndDate, images, title } = req.body;
+  const { pid, quantity, color, size, rentalStartDate, rentalEndDate} = req.body;
 
   // Kiểm tra các input cần thiết
-  if (!pid || !quantity || !color || !size || !rentalStartDate || !rentalEndDate || !price  || !title) {
+  if (!pid || !quantity || !color || !size || !rentalStartDate || !rentalEndDate) {
     return res.status(400).json({ message: "Thiếu thông tin cần thiết." });
   }
 
@@ -356,9 +384,7 @@ const updateCart = asyncHandler(async (req, res) => {
       size,
       rentalStartDate,
       rentalEndDate,
-      price,
-      images,
-      title,
+    
     });
 
     await user.save();
