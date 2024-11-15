@@ -226,7 +226,7 @@ const getUsers = asyncHandler(async (req, res) => {
   const queries = {...req.query}
   const excludeFields = ["sort", "fields", "page", "limit"]
   excludeFields.forEach(field => delete queries[field]);
-  const queryString = JSON.stringify(queries);
+  let queryString = JSON.stringify(queries);
   queryString = queryString.replace(/\b(gte|gt|lt|lte)\b/,(matchedEl)=> `$${matchedEl}`)
   const formatedQueries = JSON.parse(queryString);
   if(queries.firstname && queries.lastname) {
@@ -237,10 +237,10 @@ const getUsers = asyncHandler(async (req, res) => {
   else if(queries.firstname || queries.lastname){
     formatedQueries.$or = []
     if(queries.firstname){
-      formatedQueries.$or.push({firstname: {$regex: query.firstname, $options: "i"}})
+      formatedQueries.$or.push({firstname: {$regex: queries.firstname, $options: "i"}})
     }
     if(queries.lastname){
-      formatedQueries.$or.push({lastname: {$regex: query.lastname, $options: "i"}})
+      formatedQueries.$or.push({lastname: {$regex: queries.lastname, $options: "i"}})
     }
     if(formatedQueries.$or.length === 0){
       delete formatedQueries.$or
@@ -256,9 +256,9 @@ const getUsers = asyncHandler(async (req, res) => {
   const limit = +req.query.page || process.env.LIMIT_PER_PAGE
   const skip = (page - 1) * limit
   queryCommand = queryCommand.skip(skip).limit(limit)
-  const respone = await queryCommand.exec()
+  const response = await queryCommand.exec()
   const counts = await User.countDocuments(formatedQueries)
-  return res.status(respone).json({
+  return res.status(200).json({
     counts,
     success: response ? true : false,
     users: response ? response : "Cann't get users"
