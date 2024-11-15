@@ -63,9 +63,8 @@ var userSchema = new mongoose.Schema({
       quantity: Number,
       color: String,
       size: String,
-      price: Number,
-      title: String,
-      images: [String]
+      rentalStartDate: Date,
+      rentalEndDate: Date,
     }
   ]
 },{timestamps: true});

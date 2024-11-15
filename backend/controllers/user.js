@@ -324,8 +324,8 @@ const updateAddress = asyncHandler(async (req, res)=>{
 })
   
 const updateCart = asyncHandler(async (req, res) => {
-  const  _id  = req.user._id;
-  const { pid, quantity, color, size, rentalStartDate, rentalEndDate} = req.body;
+  const _id = req.user._id;
+  const { pid, quantity, color, size, rentalStartDate, rentalEndDate } = req.body;
 
   // Kiểm tra các input cần thiết
   if (!pid || !quantity || !color || !size || !rentalStartDate || !rentalEndDate) {
@@ -333,18 +333,23 @@ const updateCart = asyncHandler(async (req, res) => {
   }
 
   const user = await User.findById(_id).select("cart");
+
+  // Convert rentalStartDate and rentalEndDate to Date objects for comparison
+  const rentalStart = new Date(rentalStartDate);
+  const rentalEnd = new Date(rentalEndDate);
+
   const existingProductIndex = user?.cart?.findIndex(
     el =>
       el.product.toString() === pid &&
       el.color === color &&
       el.size === size && 
-      el.rentalStartDate === rentalStartDate &&
-      el.rentalEndDate === rentalEndDate
+      el.rentalStartDate.getTime() === rentalStart.getTime() &&
+      el.rentalEndDate.getTime() === rentalEnd.getTime()
   );
 
   if (existingProductIndex >= 0) {
     // Nếu sản phẩm đã tồn tại, chỉ tăng số lượng
-    user.cart[existingProductIndex].quantity += quantity;
+    user.cart[existingProductIndex].quantity += +quantity;
 
     await user.save();
     return res.status(200).json({
@@ -358,9 +363,8 @@ const updateCart = asyncHandler(async (req, res) => {
       quantity,
       color,
       size,
-      rentalStartDate,
-      rentalEndDate,
-    
+      rentalStartDate: rentalStart,
+      rentalEndDate: rentalEnd,
     });
 
     await user.save();
@@ -370,6 +374,7 @@ const updateCart = asyncHandler(async (req, res) => {
     });
   }
 });
+
 
 const deleteCart = asyncHandler(async (req, res) => {
     const { _id } = req.user
