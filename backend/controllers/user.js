@@ -1,5 +1,6 @@
 const asyncHandler = require("express-async-handler");
 const User = require("../models/user");
+const Product = require("../models/product");
 const crypto = require("crypto");
 const {
   generateAccessToken,
@@ -323,57 +324,60 @@ const updateAddress = asyncHandler(async (req, res)=>{
     })
 })
   
-const updateCart = asyncHandler(async (req, res) => {
-  const _id = req.user._id;
-  const { pid, quantity, color, size, rentalStartDate, rentalEndDate } = req.body;
-
-  // Kiểm tra các input cần thiết
-  if (!pid || !quantity || !color || !size || !rentalStartDate || !rentalEndDate) {
-    return res.status(400).json({ message: "Thiếu thông tin cần thiết." });
+const updateCart = asyncHandler(async (req, res)=>{
+  const { _id } = req.user
+  const { pid, quantity, size, color, rentalStartDate, rentalEndDate } = req.body
+  if(!(pid || quantity || size || color || rentalStartDate || rentalEndDate)){
+    return res.status(400).json({
+      success : false,
+      mes: "Thiếu thông tin cần thiết"
+    })
   }
-
-  const user = await User.findById(_id).select("cart");
-
-  // Convert rentalStartDate and rentalEndDate to Date objects for comparison
-  const rentalStart = new Date(rentalStartDate);
-  const rentalEnd = new Date(rentalEndDate);
-
-  const existingProductIndex = user?.cart?.findIndex(
-    el =>
-      el.product.toString() === pid &&
-      el.color === color &&
-      el.size === size && 
-      el.rentalStartDate.getTime() === rentalStart.getTime() &&
-      el.rentalEndDate.getTime() === rentalEnd.getTime()
-  );
-
-  if (existingProductIndex >= 0) {
-    // Nếu sản phẩm đã tồn tại, chỉ tăng số lượng
-    user.cart[existingProductIndex].quantity += +quantity;
-
-    await user.save();
-    return res.status(200).json({
+  const product = await Product.findById(pid)
+  const user = await User.findById(_id).select("cart")
+  const rentalStart = new Date(rentalStartDate)
+  const rentalEnd = new Date(rentalEndDate)
+  const existingProductIndex = user?.cart?.findIndex((el) =>
+    el.product.toString() === pid &&
+    el.color === color &&
+    el.size === size &&
+    el.quantity <= product.stock &&
+    el.rentalStartDate.getTime() === rentalStart.getTime() &&
+    el.rentalEndDate.getTime() === rentalEnd.getTime()
+  )
+  if(existingProductIndex >= 0){
+    if(product.stock > 0){
+      user.cart[existingProductIndex].quantity += +quantity
+      product.stock -= +quantity
+      await user.save()
+      await product.save()
+      return res.status(200).json({
       success: true,
-      updateUser: user,
-    });
-  } else {
-    // Nếu sản phẩm chưa có trong giỏ, thêm mới
-    user.cart.push({
-      product: pid,
-      quantity,
-      color,
-      size,
-      rentalStartDate: rentalStart,
-      rentalEndDate: rentalEnd,
-    });
-
-    await user.save();
-    return res.status(200).json({
-      success: true,
-      updateUser: user,
-    });
+      updateUser: user ? user.cart : false
+    })
+    }else{
+      return res.status(400).json({
+        success: false,
+        mes: "Kho hết hàng oke"
+      })
+    }
+  }else{
+    if(product.stock > 0){
+      user.cart.push({ product: pid, quantity, size, color, rentalStartDate: rentalStart, rentalEndDate: rentalEnd })
+      product.stock -= +quantity
+      await product.save()
+    }else{
+      return res.status(400).json({
+        success: false,
+        mes: "Kho hết hàng oke"
+      })}
   }
-});
+  await user.save()
+  return res.status(200).json({
+    success: true,
+    updateUser: user ? user.cart : false
+  })
+})
 
 
 const deleteCart = asyncHandler(async (req, res) => {
