@@ -193,6 +193,7 @@ const ratings = asyncHandler(async (req,res)=>{
   if(existingRateIndex >= 0){
     product.ratings[existingRateIndex].star = +star
     product.ratings[existingRateIndex].comment = comment
+    product.totalRatings = Math.round(product.ratings.reduce((total, item)=> total + +item.star, 0)/product.ratings.length)
     await product.save()
     return res.status(200).json({
       success: existingRateIndex ? true : false,
@@ -200,7 +201,10 @@ const ratings = asyncHandler(async (req,res)=>{
     })
   }else{
     product.ratings.push({star: +star, postBy: _id, comment})
+    product.totalRatings = Math.round(product.ratings.reduce((total, item)=> total + +item.star, 0)/product.ratings.length)
+    await product.save()
   }
+ 
   await product.save()
   return res.status(200).json({
     success: true,
@@ -208,56 +212,46 @@ const ratings = asyncHandler(async (req,res)=>{
   })
 })
 
-const interact = asyncHandler(async (req, res) => {
-  const { _id } = req.user;
-  const { pid, action } = req.params; // action can be 'like' or 'dislike'
-  
-  const product = await Product.findById(pid).select("likes dislikes");
-  
-  if (!product) {
-    return res.status(404).json({ success: false, message: "Product not found" });
+const interact = asyncHandler(async (req,res)=>{
+  const {_id} = req.user
+  const { pid, action } = req.params
+  const product = await Product.findById(pid).select("likes dislikes").populate("likes.$.like", "firstname lastname").populate("dislikes.$.dislike", "firstname lastname")
+  if(!product){
+    return res.status(400).json({
+      mes: "Product not found"
+    })
   }
-  
-  const existingLikeIndex = product.likes?.findIndex(el => 
-    el.like.toString() === _id.toString()
-  );
-  const existingDislikeIndex = product.dislikes?.findIndex(el => 
-    el.dislike.toString() === _id.toString()
-  );
-
-  if (action === 'like') {
-    if (existingLikeIndex >= 0) {
-      // If user already liked, remove the like
-      product.likes = product.likes.filter(el => el.like.toString() !== _id.toString());
-    } else {
-      // Remove from dislikes if present
-      if (existingDislikeIndex >= 0) {
-        product.dislikes = product.dislikes.filter(el => el.dislike.toString() !== _id.toString());
+  const existingLikeIndex = product.likes.findIndex(el => el.like.toString() === _id.toString())
+  const existingDislikeIndex = product.dislikes.findIndex(el => el.dislike.toString() === _id.toString())
+  if(action === "like"){
+    if(existingLikeIndex >= 0){
+      product.likes.pop(_id)
+    }else{
+      if(existingDislikeIndex >= 0){
+        product.dislikes.pop(_id)
       }
-      // Add to likes
-      product.likes.push({ like: _id });
+      product.likes.push({like: _id})
     }
-  } else if (action === 'dislike') {
-    if (existingDislikeIndex >= 0) {
-      // If user already disliked, remove the dislike
-      product.dislikes = product.dislikes.filter(el => el.dislike.toString() !== _id.toString());
-    } else {
-      // Remove from likes if present
-      if (existingLikeIndex >= 0) {
-        product.likes = product.likes.filter(el => el.like.toString() !== _id.toString());
+  }else if(action === "dislike"){
+    if(existingDislikeIndex >= 0){
+      product.dislikes.pop(_id)
+    }else{
+      if(existingLikeIndex >= 0){
+        product.likes.pop(_id)
       }
-      // Add to dislikes
-      product.dislikes.push({ dislike: _id });
+      product.dislikes.push({dislike: _id})
     }
-  } else {
-    return res.status(400).json({ success: false, message: "Invalid action" });
+  }else{
+    return res.status(400).json({
+      success: false,
+      mes: "Action invalid"
+    })
   }
-
-  await product.save();
+  await product.save()
   return res.status(200).json({
     success: true,
     likes: product.likes,
-    dislikes: product.dislikes
-  });
-});
+    dislikes: product.dislikes,
+  })
+})
 module.exports = { createProduct, getOne, getProducts, updateProduct, deleteProduct, updateImages, deleteImages, updateVariants, deleteProduct, deleteVariant, ratings, interact };
