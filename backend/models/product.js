@@ -76,7 +76,9 @@ var productSchema = new mongoose.Schema({
             price:Number,
             images: Array
         }
-    ]
+    ],
+    likes: [{like: {type: mongoose.Types.ObjectId, ref: "User"}}],
+    dislikes: [{dislike: {type: mongoose.Types.ObjectId, ref: "User"}}]
 },{timestamps: true});
 
 //Export the model
