@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  tmdtjs:
+    build: .
+    container_name: tmdtjs
+    env_file: ./.env 
+    ports:
+      - "8001:8000"
+
+    depends_on:
+      - mongo
+  
+    networks:
+      - backend_network
+    command: ["npm", "start"]
+
+  mongo:
+    image: mongo:latest
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    networks:
+      - backend_network
+
+
+networks:
+  backend_network:
+    driver: bridge

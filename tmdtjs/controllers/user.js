@@ -11,6 +11,7 @@ const makeToken = require("uniquid");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const { response } = require("express");
+const redis = require('../configs/redis');
 
 const register = asyncHandler(async (req, res) => {
   const { firstname, lastname, mobile, address, email, password } = req.body;
@@ -41,6 +42,7 @@ const register = asyncHandler(async (req, res) => {
     success: true,
     mes: "Please check your email to confirm registration!",
   });
+  await redis.setex(`register:${email}`, 24 * 60 * 60, JSON.stringify({ firstname, lastname, mobile, address, email, password, avatar }));
 });
 
 const finalRegister = asyncHandler(async (req, res) => {
@@ -327,7 +329,7 @@ const updateAddress = asyncHandler(async (req, res)=>{
 const updateCart = asyncHandler(async (req, res)=>{
   const { _id } = req.user
   const { pid, quantity, size, color, rentalStartDate, rentalEndDate } = req.body
-  if(!(pid || quantity || size || color || rentalStartDate || rentalEndDate)){
+  if(!(pid || quantity || size || color || rentalStartDate || rentalEndDate )){
     return res.status(400).json({
       success : false,
       mes: "Thiếu thông tin cần thiết"
@@ -341,12 +343,13 @@ const updateCart = asyncHandler(async (req, res)=>{
     el.product.toString() === pid &&
     el.color === color &&
     el.size === size &&
-    el.quantity <= product.stock &&
+    el.quantity <= +product.stock &&
     el.rentalStartDate.getTime() === rentalStart.getTime() &&
-    el.rentalEndDate.getTime() === rentalEnd.getTime()
+    el.rentalEndDate.getTime() === rentalEnd.getTime() 
+
   )
   if(existingProductIndex >= 0){
-    if(product.stock > 0){
+    if(product.stock > 0 ){
       user.cart[existingProductIndex].quantity += +quantity
       product.stock -= +quantity
       await user.save()
@@ -362,14 +365,14 @@ const updateCart = asyncHandler(async (req, res)=>{
       })
     }
   }else{
-    if(product.stock > 0){
-      user.cart.push({ product: pid, quantity, size, color, rentalStartDate: rentalStart, rentalEndDate: rentalEnd })
+    if(product.stock > 0 && product.size === size && product.color === color){
+      user.cart.push({ product: pid, quantity, size, color, rentalStartDate: rentalStart, rentalEndDate: rentalEnd, title: product.title, price: product.price, images: product.images })
       product.stock -= +quantity
       await product.save()
     }else{
       return res.status(400).json({
         success: false,
-        mes: "Kho hết hàng oke"
+        mes: "Deo them dc oke"
       })}
   }
   await user.save()

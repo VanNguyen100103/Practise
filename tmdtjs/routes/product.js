@@ -17,5 +17,4 @@ router.post("/ratings", verifyToken, ctrls.ratings)
 router.get("/interact/:pid/:action", verifyToken, ctrls.interact)
 
 
-
 module.exports = router;
